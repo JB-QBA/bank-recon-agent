@@ -1,10 +1,10 @@
-# bank_reco_agent/app/main.py
+# Bank Recon Agent/app/main.py
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from bank_reco_agent.app.routes import upload
-from bank_reco_agent.app.routes import remittance
-from bank_reco_agent.app.routes import download  # ✅ Corrected path
+from app.routes import upload
+from app.routes import remittance
+from app.routes import download  # ✅ Corrected path
 
 app = FastAPI(title="Bank Reconciliation Agent")
 
