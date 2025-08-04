@@ -1,10 +1,12 @@
-# Bank Recon Agent/app/main.py
+# app/main.py
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.routes import upload
 from app.routes import remittance
-from app.routes import download  # ✅ Corrected path
+from app.routes import download
+from app.routes import xero_auth  # ✅ Add this line
 
 app = FastAPI(title="Bank Reconciliation Agent")
 
@@ -16,9 +18,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 🔗 Include all route modules
 app.include_router(upload.router, prefix="/upload", tags=["Upload"])
 app.include_router(remittance.router, prefix="/upload", tags=["Remittance"])
 app.include_router(download.router, tags=["Download"])
+app.include_router(xero_auth.router, tags=["Xero Auth"])  # ✅ Mount Xero auth routes
 
 @app.get("/")
 def root():

@@ -44,3 +44,5 @@ async def callback(request: Request):
         token_data = response.json()
 
     return token_data  # or save this securely
+
+print("✅ Xero Auth routes loaded")
