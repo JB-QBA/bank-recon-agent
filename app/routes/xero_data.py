@@ -12,6 +12,7 @@ class PaymentRequest(BaseModel):
     account_id: str
     amount: float
     date: str  # YYYY-MM-DD
+    currency_rate: float | None = None  # ✅ Optional for foreign currency
 
 async def get_tenant_id(access_token: str):
     async with httpx.AsyncClient() as client:
@@ -88,6 +89,9 @@ async def create_payment(payment: PaymentRequest):
         "Amount": payment.amount,
         "Date": payment.date
     }
+
+    if payment.currency_rate:
+        payment_data["CurrencyRate"] = payment.currency_rate  # ✅ Include only if set
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
