@@ -40,3 +40,4 @@ pandas
 openpyxl
 python-dotenv
 httpx
+simplejson
