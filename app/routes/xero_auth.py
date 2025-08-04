@@ -6,6 +6,8 @@ from fastapi.responses import RedirectResponse
 import httpx
 from urllib.parse import urlencode
 
+from app.utils.token_utils import save_tokens  # ✅ Add this
+
 router = APIRouter()
 
 CLIENT_ID = os.getenv("XERO_CLIENT_ID")
@@ -41,8 +43,12 @@ async def callback(request: Request):
 
     async with httpx.AsyncClient() as client:
         response = await client.post(token_url, data=data, headers=headers)
-        token_data = response.json()
+        tokens = response.json()
 
-    return token_data  # or save this securely
+    save_tokens(tokens)  # ✅ Save to local file for reuse
 
-print("✅ Xero Auth routes loaded")
+    return {
+        "access_token": tokens.get("access_token"),
+        "refresh_token": tokens.get("refresh_token"),
+        "expires_in_minutes": tokens.get("expires_in", 0) // 60
+    }
