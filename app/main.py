@@ -7,7 +7,8 @@ from app.routes import upload
 from app.routes import remittance
 from app.routes import download
 from app.routes import xero_auth
-from app.routes import xero_data  # ✅ Add this line
+from app.routes import xero_data
+from app.routes import ocr_receipt  # ✅ NEW: Import OCR route
 
 app = FastAPI(title="Bank Reconciliation Agent")
 
@@ -24,7 +25,8 @@ app.include_router(upload.router, prefix="/upload", tags=["Upload"])
 app.include_router(remittance.router, prefix="/upload", tags=["Remittance"])
 app.include_router(download.router, tags=["Download"])
 app.include_router(xero_auth.router, tags=["Xero Auth"])
-app.include_router(xero_data.router, tags=["Xero API"])  # ✅ Mount /invoices route
+app.include_router(xero_data.router, tags=["Xero API"])
+app.include_router(ocr_receipt.router)  # ✅ NEW: Mount OCR route
 
 @app.get("/")
 def root():
