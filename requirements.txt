@@ -42,3 +42,6 @@ python-dotenv
 httpx
 simplejson
 python-multipart
+pytesseract
+opencv-python
+Pillow
