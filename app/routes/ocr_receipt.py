@@ -10,7 +10,7 @@ router = APIRouter()
 RECEIPT_DIR = "app/receipts"
 os.makedirs(RECEIPT_DIR, exist_ok=True)
 
-@router.post("/upload/payment-receipt")
+@router.post("/upload/payment-receipt", tags=["Receipt OCR"])
 async def upload_payment_receipt(file: UploadFile = File(...)):
     file_path = os.path.join(RECEIPT_DIR, file.filename)
     with open(file_path, "wb") as buffer:
