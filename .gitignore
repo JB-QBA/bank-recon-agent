@@ -1,2 +1,3 @@
 # Ignore token storage
 xero_tokens.json
+app/secrets/*.json
