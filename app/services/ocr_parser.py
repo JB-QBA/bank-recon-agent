@@ -4,6 +4,11 @@ import pytesseract
 from PIL import Image
 import cv2
 import re
+import platform
+
+# Optional: only override tesseract path if running on Windows
+if platform.system() == "Windows":
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 def extract_receipt_data(image_path):
     image = cv2.imread(image_path)
