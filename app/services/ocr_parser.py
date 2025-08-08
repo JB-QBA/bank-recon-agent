@@ -67,10 +67,13 @@ def extract_reference(text):
             return match.group(1).strip()
 
     # 🍔 Case 2: Talabat or food order receipts
-    if "order id" in lower_text or "order summary" in lower_text or "zoom" in lower_text:
-        match = re.search(r"order details\s*\n?([\w\s]+)", text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
+    if "order id" in lower_text or "order summary" in lower_text or "burger zoom" in lower_text:
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            if "order details" in line.lower() and i + 1 < len(lines):
+                supplier = lines[i + 1].strip()
+                if supplier:
+                    return supplier
 
     # 🛑 Fallback
     return None
