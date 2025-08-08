@@ -46,18 +46,31 @@ def extract_receipt_data(image_path):
     }
 
 
-# 🧠 Simple regex-based extractors (tweak if needed)
 def extract_amount(text):
     matches = re.findall(r"\d{1,3}(?:,\d{3})*(?:\.\d{2})", text)
     return matches[-1] if matches else None
 
+
 def extract_date(text):
-    match = re.search(r"\d{1,2}[-/ ]\w{3,9}[-/ ]\d{2,4}", text, re.IGNORECASE)
+    # Match common date formats: 11/07/2025, 16 Jul 2025, 16-07-2025, etc.
+    match = re.search(r"\b\d{1,2}[/-\s](?:\w{3,9}|\d{1,2})[/-\s]\d{2,4}", text, re.IGNORECASE)
     return match.group() if match else None
 
+
 def extract_reference(text):
-    lines = text.splitlines()
-    for line in lines:
-        if "Ref" in line or "reference" in line.lower():
-            return line.strip()
+    lower_text = text.lower()
+
+    # 🏦 Case 1: BenefitPay or bank receipts
+    if "fawri" in lower_text or "iban" in lower_text:
+        match = re.search(r"transaction description\s*\n?(.+)", text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+
+    # 🍔 Case 2: Talabat or food order receipts
+    if "order id" in lower_text or "order summary" in lower_text or "zoom" in lower_text:
+        match = re.search(r"order details\s*\n?([\w\s]+)", text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+
+    # 🛑 Fallback
     return None
