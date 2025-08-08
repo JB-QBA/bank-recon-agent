@@ -53,7 +53,7 @@ def extract_amount(text):
 
 def extract_date(text):
     # Match common date formats: 11/07/2025, 16 Jul 2025, 16-07-2025, etc.
-    match = re.search(r"\b\d{1,2}[/-\s](?:\w{3,9}|\d{1,2})[/-\s]\d{2,4}", text, re.IGNORECASE)
+    match = re.search(r"\b\d{1,2}[/\s-](?:\w{3,9}|\d{1,2})[/\s-]\d{2,4}", text, re.IGNORECASE)
     return match.group() if match else None
 
 
