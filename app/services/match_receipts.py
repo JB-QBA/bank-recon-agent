@@ -9,15 +9,19 @@ import pandas as pd
 from dateutil import parser as dtparser
 
 
+# ---------------------------
+# Helpers
+# ---------------------------
+
 def _parse_date_safe(val) -> datetime | None:
-    if val is None:
+    if val is None or (isinstance(val, float) and math.isnan(val)):
         return None
     if isinstance(val, datetime):
         return val
     s = str(val).strip()
-    if not s:
+    if not s or s.lower() in {"nan", "none"}:
         return None
-    # Prefer day-first to handle 11/07/2025 etc.
+    # Prefer day-first for bank exports like 11/07/2025
     try:
         return dtparser.parse(s, dayfirst=True, fuzzy=True)
     except Exception:
@@ -25,9 +29,18 @@ def _parse_date_safe(val) -> datetime | None:
 
 
 def _norm_amount(val) -> float | None:
-    if val is None or (isinstance(val, float) and (math.isnan(val))):
+    if val is None or (isinstance(val, float) and math.isnan(val)):
         return None
-    s = str(val).replace(",", "").replace("BHD", "").strip()
+    s = str(val)
+    # Remove currency strings and thousand separators
+    s = (
+        s.replace("BHD", "")
+         .replace(",", "")
+         .replace("\u00A0", " ")  # non-breaking space
+         .strip()
+    )
+    if s == "":
+        return None
     try:
         return float(s)
     except Exception:
@@ -38,35 +51,159 @@ def _within_days(d1: datetime, d2: datetime, days: int) -> bool:
     return abs((d1.date() - d2.date()).days) <= days
 
 
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize column headers:
+      - strip spaces
+      - drop leading '*' or other markers
+      - collapse inner double spaces
+      - keep original order
+    """
+    def clean(name: str) -> str:
+        n = str(name).strip()
+        # remove common leading markers like '*' used in some exports
+        while n.startswith(("*", "#", "·", "•")):
+            n = n[1:].lstrip()
+        # collapse spaces
+        n = " ".join(n.split())
+        return n
+    df = df.copy()
+    df.columns = [clean(c) for c in df.columns]
+    return df
+
+
+def _detect_date_column(df: pd.DataFrame) -> str | None:
+    """
+    Try to find a date column by common names after normalization.
+    """
+    candidates = {
+        "Date",
+        "Transaction Date",
+        "Posting Date",
+        "Value Date",
+        "Statement Date",
+    }
+    # exact match first
+    for c in df.columns:
+        if c in candidates:
+            return c
+    # case-insensitive contains
+    for c in df.columns:
+        cl = c.lower()
+        if "date" in cl:
+            return c
+    return None
+
+
+def _detect_amount_column(df: pd.DataFrame) -> str | None:
+    """
+    If there is a single Amount column, return it.
+    Otherwise, return None (we'll try Debit/Credit combo).
+    """
+    # exact name preference
+    for name in ["Amount", "Transaction Amount", "Amt"]:
+        if name in df.columns:
+            return name
+    # contains
+    for c in df.columns:
+        if "amount" in c.lower():
+            return c
+    return None
+
+
+def _detect_debit_credit(df: pd.DataFrame) -> tuple[str | None, str | None]:
+    """
+    Try to find Debit and Credit columns (or Withdrawal/Deposit synonyms).
+    Returns (debit_col, credit_col) which may be None if not found.
+    """
+    debit_names = {"Debit", "Withdrawal", "Withdrawals", "Outflow", "Paid Out", "Money Out"}
+    credit_names = {"Credit", "Deposit", "Deposits", "Inflow", "Paid In", "Money In"}
+
+    debit_col = None
+    credit_col = None
+
+    # exact matches first
+    for c in df.columns:
+        if c in debit_names:
+            debit_col = c
+        if c in credit_names:
+            credit_col = c
+
+    # loose contains if not found
+    if debit_col is None:
+        for c in df.columns:
+            cl = c.lower()
+            if any(k.lower() in cl for k in ["debit", "withdraw", "outflow", "paid out", "money out"]):
+                debit_col = c
+                break
+
+    if credit_col is None:
+        for c in df.columns:
+            cl = c.lower()
+            if any(k.lower() in cl for k in ["credit", "deposit", "inflow", "paid in", "money in"]):
+                credit_col = c
+                break
+
+    return debit_col, credit_col
+
+
+# ---------------------------
+# Public API
+# ---------------------------
+
 def match_receipts_to_bank(
     bank_df: pd.DataFrame,
     receipts: Iterable[dict],
     *,
-    date_col_guess: str = "Date",
-    amount_col_guess: str = "Amount",
-    ref_col_guess: str | None = None,
     date_window_days: int = 3,
     amount_tol: float = 0.01,
-) -> Tuple[pd.DataFrame, dict]:
+) -> tuple[pd.DataFrame, dict]:
     """
     Enrich bank_df with receipt matches.
 
-    Assumptions:
-      - bank_df has a date column (default 'Date')
-      - bank_df has an amount column (default 'Amount')
-      - receipts is an iterable of dicts: {id, amount, date, reference, ...}
+    Auto-detects date & amount columns:
+      - If 'Amount' exists, uses that
+      - Else if Debit/Credit exist, computes Amount = Credit - Debit (credits positive, debits negative)
+    Date parsing is day-first.
+
+    receipts: iterable of dicts with keys:
+      - id, amount, date (ISO or human), reference, filename, source
     """
 
-    df = bank_df.copy()
+    # Normalize columns like "*Date" -> "Date"
+    df = _normalize_columns(bank_df)
 
-    # Normalize bank dates & amounts
-    bank_date_col = date_col_guess if date_col_guess in df.columns else next(
-        (c for c in df.columns if c.lower().startswith("date")), date_col_guess
-    )
-    bank_amt_col = amount_col_guess if amount_col_guess in df.columns else next(
-        (c for c in df.columns if "amount" in c.lower()), amount_col_guess
-    )
+    # --- Detect/prepare date column
+    bank_date_col = _detect_date_column(df)
+    if bank_date_col is None:
+        raise KeyError("Could not detect a Date column in the uploaded CSV.")
 
+    # --- Detect/prepare amount column
+    bank_amt_col = _detect_amount_column(df)
+
+    if bank_amt_col is None:
+        # Fall back to Debit/Credit
+        debit_col, credit_col = _detect_debit_credit(df)
+        if debit_col is None and credit_col is None:
+            # As a last resort, try to find any numeric-looking column named like "Amount (BHD)" etc.
+            for c in df.columns:
+                if "amount" in c.lower():
+                    bank_amt_col = c
+                    break
+
+        if bank_amt_col is None and (debit_col is not None or credit_col is not None):
+            # Build a synthetic 'Amount' column from debit/credit
+            d = df[debit_col] if debit_col in df.columns else 0.0
+            c = df[credit_col] if credit_col in df.columns else 0.0
+            df["_SynthAmount"] = (c.apply(_norm_amount) if hasattr(c, "apply") else 0.0) - (
+                d.apply(_norm_amount) if hasattr(d, "apply") else 0.0
+            )
+            bank_amt_col = "_SynthAmount"
+
+    if bank_amt_col is None:
+        raise KeyError("Could not detect an Amount or Debit/Credit columns in the uploaded CSV.")
+
+    # --- Normalize bank dates & amounts
     df["_BankDate"] = df[bank_date_col].apply(_parse_date_safe)
     df["_BankAmt"] = df[bank_amt_col].apply(_norm_amount)
 
@@ -114,7 +251,7 @@ def match_receipts_to_bank(
             no_candidates += 1
             continue
 
-        # Candidate receipts by amount tolerance
+        # Candidate receipts by amount tolerance (absolute compare)
         cand = [r for r in recs if abs(abs(b_amt) - r["amount"]) <= amount_tol]
 
         # If we have a date on the bank row, filter by window
@@ -160,6 +297,8 @@ def match_receipts_to_bank(
         "no_candidates": no_candidates,
         "multi_candidates": multi_candidates,
         "duplicate_receipt_use": dup_candidates,
+        "bank_date_column": bank_date_col,
+        "bank_amount_column": bank_amt_col,
     }
 
     # Clean up temp columns
